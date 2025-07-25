@@ -126,6 +126,7 @@ class AlarmClock:
         )
         self.instruction_entry.place(x=76, y=157)
         self.instruction_entry.bind("<FocusIn>", self.clear_instruction)
+        self.instruction_entry.bind("<FocusOut>", self.set_instruction)
         
         # Set alarm button
         submit_btn = tk.Button(
@@ -271,6 +272,10 @@ class AlarmClock:
         """Clear instruction text when focused"""
         if self.instruction_text.get() == "Reminder:":
             self.instruction_text.set("")
+    def set_instruction(self, event):
+        """Set instruction text when not focused"""
+        if self.instruction_text.get() == "":
+            self.instruction_text.set("Reminder:")
     
     def update_main_clock(self):
         """Update the main clock display every second"""
