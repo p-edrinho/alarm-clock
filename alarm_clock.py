@@ -388,15 +388,8 @@ if __name__ == "__main__":
     app = AlarmClock()
     app.run()
 
-# DONE: criar mais "slots" de alarmes - feita uma lista de alarmes pra poder existir mais de 1 ( [] )
-# DONE: resolver o problema com o vineboom.wav nao ter o path reconhecido - usar a biblioteca os para o arquivo ter acesso ao diretório do programa e poder usar os arquivos desse diretorio
+# TODO: adicionar uma forma de escolher seu proprio som pro alarme?
+# TODO: melhorar a gui pra ser mais agradavel visualmente
+# TODO: feito os botoes de adicionar/remover mais alarmes, fazer com que cada botão de remover, remova seu proprio alarme e depois fazer um botao universal de adicionar
 # TODO: criar mais slots visualmente, e mais botoes pra setar os alarmes
 # TODO: criar um botão para deletar o alarme
-# DONE: replicar o nome de instruçao nesses slots - toda a funcionalidade do alarme foi encapsulada
-# TODO: feito os botoes de adicionar/remover mais alarmes, fazer com que cada botão de remover, remova seu proprio alarme e depois fazer um botao universal de adicionar
-# DONE: adicionar exception handling pro iconbitmap no inicio e pra parte do som do alarme (se nao houver, rodar suave sem) - try/except 
-# TODO: adicionar uma forma de escolher seu proprio som pro alarme?
-# DONE: criar um relogio/data principal na janela - utilizando datetime.datetime.now() para pegar a hora atual, strftime para formata-la na forma desejada. linhas 49+ e 111+
-# DONE: descobrir como fazer pra janela nao ficar "nao respondendo" enquanto o tempo roda - tava rodando tudo em 1 thread só, agora ta multi
-# TODO: melhorar a gui pra ser mais agradavel visualmente
-# DONE: fazer o programa entender que se nenhum numero for colocado = 00 - .replace(" ", ""), explicaçao nas linhas 61-68
