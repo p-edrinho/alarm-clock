@@ -7,51 +7,62 @@ import time
 import threading
 import os
 import sys
+import winsound
 
-#2 - definir a classe principal e seus metodos
+#2 - lista global para manter tracking de todas as instancias do alarme
+alarm_instances = []
+
+#3 - definir a classe principal e seus metodos
 class AlarmClock:
-    def __init__(self):
-        # Set working directory to script location
-        if getattr(sys, 'frozen', False):
-            # If running as executable
+    def __init__(self, is_main=False):
+        # define o diretório de trabalho para o diretório do script
+        if is_main and getattr(sys, 'frozen', False):
+            # se for executado como um .exe
             os.chdir(os.path.dirname(sys.executable))
-        else:
-            # If running as script
+        elif is_main:
+            # se for executado como um script
             os.chdir(os.path.dirname(os.path.abspath(__file__)))
         
-        # Initialize alarm list
+        # inicia a lista dos alarmes
         self.all_alarms = []
         self.alarm_threads = []
+        self.is_main = is_main
         
-        # Create main window
+        # adiciona a instancia em questão à lista
+        alarm_instances.append(self)
+        
+        # cria a janela principal
         self.setup_window()
         
-        # Create GUI elements
+        # cria os elementos da interface
         self.setup_gui()
         
-        # Start the main clock
+        # inicia o relogio principal
         self.update_main_clock()
     
+    # inicia a janela principal do alarme
     def setup_window(self):
-        """Initialize the main window with proper settings"""
         self.clock = tk.Tk()
-        self.clock.title("Alarm Clock")
-        self.clock.geometry("300x300+346+66")
+        self.clock.title(f"Alarm Clock {'(MAIN)' if self.is_main else f'({len(alarm_instances)})'}")
+        
+        # posiciona as proximas instancias do alarme na tela, de forma que nenhuma se sobreponha
+        offset = (len(alarm_instances) - 1) * 30
+        self.clock.geometry(f"300x300+{346 + offset}+{66 + offset}")
         self.clock.configure(bg="grey")
         self.clock.resizable(False, False)
         
-        # Try to set icon, fail gracefully if not found
+        # carrega o icone da janela, se nao for encontrado, usa o icone padrão 
         try:
             self.clock.iconbitmap("clock.ico")
         except tk.TclError:
             print("Warning: clock.ico not found, using default icon")
         
-        # Handle window closing
-        self.clock.protocol("WM_DELETE_WINDOW", self.on_closing) # method to handle what should happen when the window is tried to be closed
+        # configura o protocolo de fechamento da janela
+        self.clock.protocol("WM_DELETE_WINDOW", self.on_closing)
     
+    # cria os elementos da interface
     def setup_gui(self):
-        """Create all GUI elements"""
-        # Title label
+        # título
         title_label = tk.Label(
             self.clock, 
             text="Create an alarm", 
@@ -61,7 +72,7 @@ class AlarmClock:
         )
         title_label.place(x=85, y=5)
         
-        # Main clock display
+        # relógio principal
         self.time_now = tk.Label(
             self.clock, 
             text="", 
@@ -71,64 +82,57 @@ class AlarmClock:
         )
         self.time_now.place(x=82, y=35)
         
-        # Time input labels
+        # inputs de hora/minuto/segundo
         tk.Label(self.clock, text="Hour", bg="black", fg="white", font=("Arial", 10)).place(x=70.5, y=87)
         tk.Label(self.clock, text="Minute", bg="black", fg="white", font=("Arial", 10)).place(x=120.5, y=87)
         tk.Label(self.clock, text="Second", bg="black", fg="white", font=("Arial", 10)).place(x=180.5, y=87)
         
-        # Time input variables
+        # variaveis de hora/minuto/segundo
         self.hour = tk.StringVar()
         self.minute = tk.StringVar()
         self.second = tk.StringVar()
         
-        # Time input fields with validation
+        # campos de input de hora/minuto/segundo
         self.hour_entry = tk.Entry(
             self.clock, 
-            textvariable=self.hour, 
             bg="pink", 
             width=3, 
             font=("Arial", 15),
             justify='center'
         )
         self.hour_entry.place(x=70.5, y=117)
-        self.hour_entry.bind('<KeyRelease>', self.validate_hour)
         
         self.minute_entry = tk.Entry(
             self.clock, 
-            textvariable=self.minute, 
             bg="pink", 
             width=3, 
             font=("Arial", 15),
             justify='center'
         )
         self.minute_entry.place(x=127.5, y=117)
-        self.minute_entry.bind('<KeyRelease>', self.validate_minute_second)
         
         self.second_entry = tk.Entry(
             self.clock, 
-            textvariable=self.second, 
             bg="pink", 
             width=3, 
             font=("Arial", 15),
             justify='center'
         )
         self.second_entry.place(x=190.5, y=117)
-        self.second_entry.bind('<KeyRelease>', self.validate_minute_second)
         
-        # Instruction entry
-        self.instruction_text = tk.StringVar(value="Reminder:")
+        # input do lembrete do alarme
         self.instruction_entry = tk.Entry(
             self.clock, 
-            textvariable=self.instruction_text, 
             fg="black", 
             width=18, 
             font=("Arial", 11)
         )
         self.instruction_entry.place(x=76, y=157)
+        self.instruction_entry.insert(0, "Reminder:")
         self.instruction_entry.bind("<FocusIn>", self.clear_instruction)
         self.instruction_entry.bind("<FocusOut>", self.set_instruction)
         
-        # Set alarm button
+        # botao "set alarm" para definir o alarme 
         submit_btn = tk.Button(
             self.clock, 
             text="Set Alarm", 
@@ -138,12 +142,12 @@ class AlarmClock:
             command=self.set_alarm,
             font=("Arial", 10)
         )
-        submit_btn.place(x=110, y=190)
+        submit_btn.place(x=105, y=190)
         
-        # Add/Remove buttons with images or text fallback
+        # botoes de + / - com imagens e failproof caso a imagem nao for encontrada (vai criar um botao do tkinter)
         self.create_control_buttons()
         
-        # Format instruction
+        # instrução do lembrete
         format_label = tk.Label(
             self.clock, 
             text="Enter time in 24-hour format!", 
@@ -153,13 +157,17 @@ class AlarmClock:
         )
         format_label.place(x=79.5, y=275)
     
+    # botoes de + / - com imagens e failproof caso a imagem nao for encontrada (vai criar um botao do tkinter)
     def create_control_buttons(self):
-        """Create add/remove buttons with image fallback"""
-        # Try to load images
+        # carrega as imagens
         plus_img = self.load_resized_image_with_circular_shadow("plus.png", 45, 45)
         minus_img = self.load_resized_image_with_circular_shadow("minus.png", 35, 35)
         
-        # Add button 
+        # guarda as imagens como variaveis da instancia pra garbage collection (memory management)
+        self.plus_img = plus_img
+        self.minus_img = minus_img
+        
+        # botao de +
         if plus_img:
             add_btn = tk.Button(
                 self.clock, 
@@ -168,9 +176,9 @@ class AlarmClock:
                 borderwidth=0, 
                 highlightthickness=0, 
                 relief="flat", 
-                activebackground="grey"
+                activebackground="grey",
+                command=self.add_new_alarm_window
             )
-            add_btn.image = plus_img  # Keep a reference
         else:
             add_btn = tk.Button(
                 self.clock, 
@@ -179,11 +187,12 @@ class AlarmClock:
                 fg="black", 
                 width=3, 
                 height=1, 
-                font=("Arial", 15)
+                font=("Arial", 15),
+                command=self.add_new_alarm_window
             )
-        add_btn.place(x=201, y=220)
+        add_btn.place(x=124.5, y=220)
         
-        # Remove button 
+        # botao de -
         if minus_img:
             remove_btn = tk.Button(
                 self.clock, 
@@ -192,9 +201,9 @@ class AlarmClock:
                 borderwidth=0, 
                 highlightthickness=0, 
                 relief="flat", 
-                activebackground="grey"
+                activebackground="grey",
+                command=self.remove_current_window
             )
-            remove_btn.image = minus_img  # Keep a reference
         else:
             remove_btn = tk.Button(
                 self.clock, 
@@ -203,148 +212,210 @@ class AlarmClock:
                 fg="black", 
                 width=3, 
                 height=1, 
-                font=("Arial", 15)
+                font=("Arial", 15),
+                command=self.remove_current_window
             )
-        remove_btn.place(x=68, y=220)
+        remove_btn.place(x=250, y=250)
         
-        # Store button references for later use
+        # guarda os botoes como variaveis da instancia pra garbage collection
         self.add_btn = add_btn
         self.remove_btn = remove_btn
     
-    def validate_hour(self, event=None):
-        """Validate hour input (0-23)"""
-        value = self.hour.get()
-        if value and not value.isdigit():
-            self.hour.set(''.join(c for c in value if c.isdigit()))
-        elif value and int(value) > 23:
-            self.hour.set('23')
-    
-    def validate_minute_second(self, event=None):
-        """Validate minute/second input (0-59)"""
-        widget = event.widget if event else None
-        if widget == self.minute_entry:
-            var = self.minute
-        else:
-            var = self.second
-        
-        value = var.get()
-        if value and not value.isdigit():
-            var.set(''.join(c for c in value if c.isdigit()))
-        elif value and int(value) > 59:
-            var.set('59')
-    
-    def load_resized_image_with_circular_shadow(self, image_path, max_width, max_height):
-        """Load and resize image with circular shadow effect"""
+    # metódo para criar uma nova janela do alarme e printa o total de instancias
+    def add_new_alarm_window(self):
         try:
-            # Load and resize the original image
+            _new_alarm = AlarmClock(is_main=False)
+            print(f"Created new alarm window. Total windows: {len(alarm_instances)}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to create new alarm window: {str(e)}")
+    
+    # metodo para fechar a janela atual
+    def remove_current_window(self):
+        try:
+            # pergunta se realmente deseja fechar a janela e printa caso aconteça algum erro
+            if messagebox.askyesno("Confirm", "Close this alarm window?", parent=self.clock):
+                self.close_window()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to close window: {str(e)}", parent=self.clock)
+    
+    # metodo para fechar a janela e limpar a memoria
+    def close_window(self):
+        try:
+            # remove da lista global de instancias do alarme
+            if self in alarm_instances:
+                alarm_instances.remove(self)
+            
+            # para todos os alarmes dessa instancia
+            for thread in self.alarm_threads:
+                pass
+            
+            # fecha a janela e printa as janelas restantes e printa caso aconteca algum erro
+            self.clock.destroy()
+            
+            print(f"Window closed. Remaining windows: {len(alarm_instances)}")
+            
+        except Exception as e:
+            print(f"Error closing window: {e}")
+    
+    # formas de validaçao do input de hora (0-23) sem limpar o campo
+    def validate_hour_input(self, value):
+        if value == "":
+            return True  # permite campo vazio
+        if not value.isdigit():
+            return False  # nao permite caracteres nao numericos
+        if len(value) > 2:
+            return False  # maximo de 2 digitos
+        num = int(value)
+        return 0 <= num <= 23  # o range valido pra hora
+    
+    # mesma coisa da hora, so que para os minutos e segundos
+    def validate_minute_second_input(self, value):
+        if value == "":
+            return True  # permite campo vazio
+        if not value.isdigit():
+            return False  # nao permite caracteres nao numericos
+        if len(value) > 2:
+            return False  # maximo de 2 digitos
+        num = int(value)
+        return 0 <= num <= 59  # range valido pra minutos/segundos
+
+    # metodo responsavel por dar resize na imagem com um efeito de sombra circular
+    def load_resized_image_with_circular_shadow(self, image_path, max_width, max_height):
+        try:
+            # checa se o arquivo da imagem existe
+            if not os.path.exists(image_path):
+                print(f"Image file {image_path} not found")
+                return None
+                
+            # carrega e da resize na imagem
             image = Image.open(image_path).convert("RGBA")
             image.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
             
-            # Create a larger canvas for shadow
+            # cria uma "imagem" maior para o efeito de sombra
             shadow_offset = 3
             canvas_size = (max_width + shadow_offset * 2, max_height + shadow_offset * 2)
             canvas = Image.new('RGBA', canvas_size, (128, 128, 128, 0))
             
-            # Create circular shadow
+            # faz a sombra ser circular
             shadow_size = min(image.size)
             shadow_img = Image.new('RGBA', canvas_size, (0, 0, 0, 0))
             shadow_draw = ImageDraw.Draw(shadow_img)
             
-            # Draw circular shadow
+            # "desenha" a sombra circular
             shadow_pos = (shadow_offset + 2, shadow_offset + 2)
             shadow_end = (shadow_pos[0] + shadow_size, shadow_pos[1] + shadow_size)
             shadow_draw.ellipse([shadow_pos, shadow_end], fill=(0, 0, 0, 60))
             
-            # Blur the shadow
+            # da uma borrada na sombra
             shadow_img = shadow_img.filter(ImageFilter.GaussianBlur(2))
             
-            # Composite shadow and image
+            # 
             canvas = Image.alpha_composite(canvas.convert('RGBA'), shadow_img)
             image_pos = (shadow_offset, shadow_offset)
             canvas.paste(image, image_pos, image)
             
-            return ImageTk.PhotoImage(canvas)
+            # cria a imagem final e retorna pra janela em questao como main
+            return ImageTk.PhotoImage(canvas, master=self.clock)
         except Exception as e:
             print(f"Error loading {image_path}: {e}")
             return None
     
+    # metodo para limpar/recolocar o campo de instrucoes
     def clear_instruction(self, event):
-        """Clear instruction text when focused"""
-        if self.instruction_text.get() == "Reminder:":
-            self.instruction_text.set("")
+        current_text = self.instruction_entry.get()
+        if current_text == "Reminder:":
+            self.instruction_entry.delete(0, tk.END)
+    
     def set_instruction(self, event):
-        """Set instruction text when not focused"""
-        if self.instruction_text.get() == "":
-            self.instruction_text.set("Reminder:")
-    
+        current_text = self.instruction_entry.get().strip()
+        if current_text == "":
+            self.instruction_entry.delete(0, tk.END)
+            self.instruction_entry.insert(0, "Reminder:")
+
+    # atualiza o relogio principal a cada segundo, se a janela em questao for destruida, para de atualizar
     def update_main_clock(self):
-        """Update the main clock display every second"""
-        current_time = datetime.datetime.now()
-        now = current_time.strftime("%H:%M:%S")
-        self.time_now.config(text=now)
-        self.clock.after(1000, self.update_main_clock)
-    
-    def set_alarm(self):
-        """Set a new alarm"""
         try:
-            # Get time values with defaults
-            h = self.hour.get().strip() if self.hour.get().strip() else "00"
-            m = self.minute.get().strip() if self.minute.get().strip() else "00"
-            s = self.second.get().strip() if self.second.get().strip() else "00"
+            current_time = datetime.datetime.now()
+            now = current_time.strftime("%H:%M:%S")
+            self.time_now.config(text=now)
+            self.clock.after(1000, self.update_main_clock)
+        except tk.TclError:
+            pass
+    
+    # define um novo alarme obs.: le os valores diretamente da widget
+    def set_alarm(self):
+        try:
+            h = self.hour_entry.get().replace(" ", "")
+            m = self.minute_entry.get().replace(" ", "")
+            s = self.second_entry.get().replace(" ", "")
+            instruction_input = self.instruction_entry.get().strip()
             
-            # Validate and format time
-            h = f"{int(h):02d}" if h.isdigit() and 0 <= int(h) <= 23 else "00"
-            m = f"{int(m):02d}" if m.isdigit() and 0 <= int(m) <= 59 else "00"
-            s = f"{int(s):02d}" if s.isdigit() and 0 <= int(s) <= 59 else "00"
+            # converte os valores vazios para "0"
+            h = h if h else "0"
+            m = m if m else "0"
+            s = s if s else "0"
+            
+            # se o campo de instrucao estiver vazio, usa a mensagem padrao
+            instruction = instruction_input if instruction_input and instruction_input != "Reminder:" else "Time's up!"
+            
+            # valida os inputs para que todos sejam apenas numeros
+            if not (h.isdigit() and m.isdigit() and s.isdigit()):
+                messagebox.showerror("Invalid Input", "Please enter only numbers for time!", parent=self.clock)
+                return
+            
+            # converte para int e verifica os ranges
+            hour_int = int(h)
+            minute_int = int(m)
+            second_int = int(s)
+            
+            if not (0 <= hour_int <= 23):
+                messagebox.showerror("Invalid Hour", "Hour must be between 0 and 23!", parent=self.clock)
+                return
+            if not (0 <= minute_int <= 59):
+                messagebox.showerror("Invalid Minute", "Minute must be between 0 and 59!", parent=self.clock)
+                return
+            if not (0 <= second_int <= 59):
+                messagebox.showerror("Invalid Second", "Second must be between 0 and 59!", parent=self.clock)
+                return
+            
+            # formataçao com 2 zeros
+            h = f"{hour_int:02d}"
+            m = f"{minute_int:02d}"
+            s = f"{second_int:02d}"
             
             set_alarm_timer = f"{h}:{m}:{s}"
-            instruction = self.instruction_text.get() if self.instruction_text.get() != "Reminder:" else "Time's up!"
             
-            # Check if alarm time is in the future
-            current_time = datetime.datetime.now()
-            alarm_time = datetime.datetime.strptime(set_alarm_timer, "%H:%M:%S")
-            alarm_datetime = current_time.replace(
-                hour=alarm_time.hour,
-                minute=alarm_time.minute,
-                second=alarm_time.second,
-                microsecond=0
-            )
-            
-            # If alarm time is for tomorrow
-            if alarm_datetime <= current_time:
-                alarm_datetime += datetime.timedelta(days=1)
-            
-            # Add alarm to list
+            # adiciona o alarme à lista
             alarm_info = {
                 'time': set_alarm_timer,
                 'instruction': instruction,
-                'datetime': alarm_datetime,
                 'active': True
             }
             self.all_alarms.append(alarm_info)
             
-            # Start alarm thread
+            # inicia a thread do alarme
             alarm_thread = threading.Thread(
                 target=self.alarm_worker, 
-                args=(set_alarm_timer, instruction), 
+                args=(set_alarm_timer, instruction, self.clock), 
                 daemon=True
             )
             alarm_thread.start()
             self.alarm_threads.append(alarm_thread)
             
-            messagebox.showinfo("Alarm Set", f"Alarm set for {set_alarm_timer}\nReminder: {instruction}")
+            messagebox.showinfo("Alarm Set", f"Alarm set for {set_alarm_timer}\nReminder: {instruction}", parent=self.clock)
             
-            # Clear inputs
-            self.hour.set("")
-            self.minute.set("")
-            self.second.set("")
-            self.instruction_text.set("Reminder:")
+            # limpa os inputs
+            self.hour_entry.delete(0, tk.END)
+            self.minute_entry.delete(0, tk.END)
+            self.second_entry.delete(0, tk.END)
+            self.instruction_entry.delete(0, tk.END)
+            self.instruction_entry.insert(0, "Reminder:")
             
         except Exception as e:
             messagebox.showerror("Error", f"Failed to set alarm: {str(e)}")
     
-    def alarm_worker(self, set_alarm_timer, instruction):
-        """Worker thread for alarm monitoring"""
+    # metodo para monitorar o alarme
+    def alarm_worker(self, set_alarm_timer, instruction, parent_window):
         try:
             while True:
                 time.sleep(1)
@@ -355,46 +426,56 @@ class AlarmClock:
                     print(f"Time's up! Reminder: {instruction}")
                     self.play_alarm_sound()
                     
-                    # Show alarm notification
-                    self.clock.after(0, lambda: messagebox.showinfo("Alarm!", f"Time's up!\nReminder: {instruction}"))
+                    # mostra a notificaçao do alarme e ignora se a janela tiver sido fechada
+                    try:
+                        parent_window.after(0, lambda: messagebox.showinfo("Alarm!", f"Time's up!\nReminder: {instruction}", parent=parent_window))
+                    except tk.TclError:
+                        pass
                     break
         except Exception as e:
             print(f"Alarm error: {e}")
     
+    # metodo para tocar o som do alarme, com fallback pra caso o som nao seja encontrado/carregado (nesse caso, toca um beep)
     def play_alarm_sound(self):
-        """Play alarm sound with fallback"""
         try:
-            import winsound
-            # Try to play custom sound
             if os.path.exists("vineboom.wav"):
                 winsound.PlaySound("vineboom.wav", winsound.SND_FILENAME | winsound.SND_NOWAIT)
-                time.sleep(0.5)
                 winsound.PlaySound("vineboom.wav", winsound.SND_FILENAME | winsound.SND_NOWAIT)
             else:
-                # Fallback to system beep
                 winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
-        except ImportError:
-            # For non-Windows systems, just print
-            print("\a")  # System bell
+        except Exception as e:
+            print(f"Error playing alarm sound: {e}")
     
-
-    
+    # metodo para fechar a janela
     def on_closing(self):
-        """Handle window closing"""
-        if messagebox.askokcancel("Quit", "Do you want to quit?"):
-            self.clock.destroy()
+        if len(alarm_instances) <= 1:
+            # se for a ultima janela, pede confirmaçao para fechar todo o programa
+            if messagebox.askokcancel("Quit", "Do you want to quit the application?", parent=self.clock):
+                # fecha todas as janelas restantes
+                for instance in alarm_instances[:]:
+                    try:
+                        instance.clock.destroy()
+                    except tk.TclError:
+                        pass
+                    except Exception as e:
+                        print(f"Error closing window: {e}")
+                alarm_instances.clear()
+        else:
+            # se nao for a ultima janela, pede confirmaçao para fechar a janela
+            if messagebox.askyesno("Close Window", "Close this alarm window?"):
+                self.close_window()
     
+    # inicia a aplicaçao
     def run(self):
-        """Start the application"""
         self.clock.mainloop()
 
-# Create and run the application
+# cria e roda a aplicação
 if __name__ == "__main__":
-    app = AlarmClock()
-    app.run()
+    main_app = AlarmClock(is_main=True)
+    main_app.run()
 
-# TODO: adicionar uma forma de escolher seu proprio som pro alarme?
-# TODO: melhorar a gui pra ser mais agradavel visualmente
-# TODO: feito os botoes de adicionar/remover mais alarmes, fazer com que cada botão de remover, remova seu proprio alarme e depois fazer um botao universal de adicionar
-# TODO: criar mais slots visualmente, e mais botoes pra setar os alarmes
-# TODO: criar um botão para deletar o alarme
+# TODO: adicionar uma forma de escolher seu proprio som pro alarme --?
+# TODO: melhorar a gui pra ser mais agradavel visualmente --?
+# TODO: fazer a notificaçao do alarme ser menos intrusiva
+# TODO: lista de todos os alarmes atuais
+# TODO: mostrar visualmente qual eh a main window, e fazer com que, ao ela ser fechada, feche todas as outras janelas e seus respectivos alarmes/processos
